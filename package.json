@@ -7,7 +7,6 @@
   , "url" : "git://github.com/sivy/node-statsd.git"
   }
 , "bugs" : { "url" : "https://github.com/sivy/node-statsd/issues" }
-, "os" : [ "linux", "darwin", "freebsd" ]
 , "directories" : { "lib" : "./lib/" }
 , "main" : "./lib/statsd"
 , "engines" : { "node" : ">=0.1.97" }

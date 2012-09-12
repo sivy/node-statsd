@@ -6,12 +6,10 @@ This client will let you fire stats at your StatsD server from a node.js applica
 
     % npm install node-statsd
     % node
-    > var StatsD = require('node-statsd').StatsD
-    > c = new StatsD('example.org',8125)
-    { host: 'example.org', port: 8125 }
-    > c.increment('node_test.int')
-    > c.decrement('node_test.int')
-    > c.timing('node_test.some_service.task.time', 500) // time in millis
+    > var statsd = new require('node-statsd')('example.org', 8125)
+    > statsd.increment('node_test.int')
+    > statsd.decrement('node_test.int')
+    > statsd.timing('node_test.some_service.task.time', 500) // time in millis
 
 ## License
 
