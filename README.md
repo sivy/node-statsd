@@ -11,6 +11,7 @@ This client will let you fire stats at your StatsD server from a node.js applica
     { host: 'example.org', port: 8125 }
     > c.increment('node_test.int')
     > c.decrement('node_test.int')
+    > c.modify('node.test.int', -23)
     > c.timing('node_test.some_service.task.time', 500) // time in millis
 
 ## License
