@@ -610,4 +610,55 @@ describe('StatsD', function(){
     });
   });
 
+  describe('#multi', function(finished){
+    it('should allow you to send one message', function(finished){
+      udpTest(function(message, server){
+        assert.equal(message, 'test:42|s');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD(address.address, address.port);
+
+        var multi = statsd.multi();
+        multi.set('test', 42);
+        multi.send();
+      });
+    });
+
+    it('should allow you to send multiple messages at once', function(finished){
+      udpTest(function(message, server){
+        assert.equal(message, 'test:42|s\nbar:42|ms|@0.5');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD(address.address, address.port);
+
+        var multi = statsd.multi();
+        multi.set('test', 42);
+        multi.timing('bar', 42, 0.5);
+        multi.send();
+      });
+    });
+
+    it('should callback', function(finished){
+      var called = false;
+      udpTest(function(message, server){
+        assert.equal(message, 'test:42|h');
+        assert.equal(called, true);
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD(address.address, address.port);
+
+        var multi = statsd.multi();
+        statsd.histogram('test', 42);
+        multi.send(function() {
+          called = true;
+        });
+      });
+    });
+  });
 });
