@@ -87,7 +87,7 @@ If an array is specified as the `name` parameter each item in that array will be
   client.histogram('my_histogram', 42, ['tag'], next);
   client.histogram('my_histogram', 42, 0.25, ['tag'], next);
 
-  // Sending multiple metrics is easy
+  // Send multiple metrics
   var multi = client.multi();
   multi.set('my_unique', 'foobar');
   multi.increment(['these', 'are', 'different', 'stats']);
