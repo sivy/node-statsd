@@ -642,6 +642,22 @@ describe('StatsD', function(){
       });
     });
 
+    it('should allow multiple stats names', function(finished){
+      udpTest(function(message, server){
+        assert.equal(message, 'test:42|s\nfoo:42|ms|@0.5\nbar:42|ms|@0.5');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD(address.address, address.port);
+
+        var multi = statsd.multi();
+        multi.set('test', 42);
+        multi.timing(['foo', 'bar'], 42, 0.5);
+        multi.send();
+      });
+    });
+
     it('should ignore messages that do not meet the sample ratio', function(finished){
       udpTest(function(message, server){
         assert.equal(message, 'test:42|s\nfoo:42|ms|@0.5');
