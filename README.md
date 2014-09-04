@@ -92,7 +92,8 @@ If an array is specified as the `name` parameter each item in that array will be
   multi.set('my_unique', 'foobar');
   multi.increment(['these', 'are', 'different', 'stats']);
   multi.gauge('my_gauge', 123.45);
-  multi.send();
+  // callback is optional
+  multi.send(next);
 ```
 
 ## Errors
