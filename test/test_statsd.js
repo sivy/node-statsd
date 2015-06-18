@@ -35,8 +35,16 @@ function assertMockClientMethod(method, finished){
     finished();
   }, function(server){
     var address = server.address(),
-        statsd = new StatsD(address.address, address.port, 'prefix', 'suffix', false, false,
-                            /* mock = true */ true),
+        statsd = new StatsD({
+          host: address.address,
+          port: address.port,
+          prefix: 'prefix',
+          suffix: 'suffix',
+          globalize: false,
+          cacheDns: false,
+          mock: true,
+          handleErrors: false
+        }),
         socket = dgram.createSocket("udp4"),
         buf = new Buffer(testFinished),
         callbackThrows = false;
@@ -76,20 +84,28 @@ describe('StatsD', function(){
   describe('#init', function(){
     it('should set default values when not specified', function(){
       // cachedDns isn't tested here; see below
-      var statsd = new StatsD();
+      var statsd = new StatsD({});
       assert.equal(statsd.host, 'localhost');
       assert.equal(statsd.port, 8125);
       assert.equal(statsd.prefix, '');
       assert.equal(statsd.suffix, '');
       assert.equal(global.statsd, undefined);
-      assert.equal(statsd.mock, undefined);
+      assert.equal(statsd.mock, false);
       assert.deepEqual(statsd.global_tags, []);
       assert.ok(!statsd.mock);
     });
 
     it('should set the proper values when specified', function(){
       // cachedDns isn't tested here; see below
-      var statsd = new StatsD('host', 1234, 'prefix', 'suffix', true, null, true, ['gtag']);
+      var statsd = new StatsD({
+        host: 'host',
+        port: 1234,
+        prefix: 'prefix',
+        suffix: 'suffix',
+        globalize: true,
+        mock: true,
+        global_tags: ['gtag']
+      });
       assert.equal(statsd.host, 'host');
       assert.equal(statsd.port, 1234);
       assert.equal(statsd.prefix, 'prefix');
@@ -157,19 +173,27 @@ describe('StatsD', function(){
     });
 
     it('should create a global variable set to StatsD() when specified', function(){
-      var statsd = new StatsD('host', 1234, 'prefix', 'suffix', true);
+      var statsd = new StatsD({host: 'host', port: 1234, prefix: 'prefix', suffix: 'suffix', globalize: true});
       assert.ok(global.statsd instanceof StatsD);
       //remove it from the namespace to not fail other tests
       delete global.statsd;
     });
 
     it('should not create a global variable when not specified', function(){
-      var statsd = new StatsD('host', 1234, 'prefix', 'suffix');
+      var statsd = new StatsD({ host: 'host', port: 1234, prefix: 'prefix', suffix: 'suffix'});
       assert.equal(global.statsd, undefined);
     });
 
     it('should create a mock Client when mock variable is specified', function(){
-      var statsd = new StatsD('host', 1234, 'prefix', 'suffix', false, false, true);
+      var statsd = new StatsD({
+        host: 'host',
+        port: 1234,
+        prefix: 'prefix',
+        suffix: 'suffix',
+        globalize: false,
+        cacheDns: false,
+        mock: true
+      });
       assert.ok(statsd.mock);
     });
 
@@ -188,7 +212,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+          statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.increment('test');
       });
@@ -236,8 +260,8 @@ describe('StatsD', function(){
         server.close();
         finished();
       }, function(server){
-        var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+        var address = server.address();
+        var statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.timing('test', 42);
       });
@@ -250,7 +274,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.timing('test', 42, ['foo', 'bar']);
       });
@@ -265,7 +289,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port, 'foo.', '.bar');
+            statsd = new StatsD({host: address.address, port: address.port, prefix: 'foo.', suffix: '.bar'});
 
         statsd.timing('test', 42, 0.5, function(){
           called = true;
@@ -288,7 +312,7 @@ describe('StatsD', function(){
         }
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.timing(['a', 'b'], 42, null, function(error, bytes){
           called += 1;
@@ -312,7 +336,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.histogram('test', 42);
       });
@@ -325,7 +349,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.histogram('test', 42, ['foo', 'bar']);
       });
@@ -340,7 +364,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port, 'foo.', '.bar');
+            statsd = new StatsD({host: address.address, port: address.port, prefix: 'foo.', suffix: '.bar'});
 
         statsd.histogram('test', 42, 0.5, function(){
           called = true;
@@ -363,7 +387,7 @@ describe('StatsD', function(){
         }
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.histogram(['a', 'b'], 42, null, function(error, bytes){
           called += 1;
@@ -387,7 +411,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.gauge('test', 42);
       });
@@ -400,7 +424,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.gauge('test', 42, ['foo', 'bar']);
       });
@@ -415,7 +439,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port, 'foo.', '.bar');
+            statsd = new StatsD({host: address.address, port: address.port, prefix: 'foo.', suffix: '.bar'});
 
         statsd.gauge('test', 42, 0.5, function(){
           called = true;
@@ -438,7 +462,7 @@ describe('StatsD', function(){
         }
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.gauge(['a', 'b'], 42, null, function(error, bytes){
           called += 1;
@@ -462,7 +486,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.increment('test');
       });
@@ -475,7 +499,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.increment('test', 42, ['foo', 'bar']);
       });
@@ -490,7 +514,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port, 'foo.', '.bar');
+            statsd = new StatsD({host: address.address, port: address.port, prefix: 'foo.', suffix: '.bar'});
 
         statsd.increment('test', 42, 0.5, function(){
           called = true;
@@ -513,7 +537,7 @@ describe('StatsD', function(){
         }
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.increment(['a', 'b'], null, function(error, bytes){
           called += 1;
@@ -537,7 +561,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.decrement('test');
       });
@@ -550,7 +574,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.decrement('test', 42, ['foo', 'bar']);
       });
@@ -565,7 +589,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port, 'foo.', '.bar');
+            statsd = new StatsD({host: address.address, port: address.port, prefix: 'foo.', suffix: '.bar'});
 
         statsd.decrement('test', 42, 0.5, function(){
           called = true;
@@ -589,7 +613,7 @@ describe('StatsD', function(){
         }
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.decrement(['a', 'b'], null, function(error, bytes){
           called += 1;
@@ -613,7 +637,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.set('test', 42);
       });
@@ -626,7 +650,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.set('test', 42, ['foo', 'bar']);
       });
@@ -641,7 +665,7 @@ describe('StatsD', function(){
         finished();
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port, 'foo.', '.bar');
+            statsd = new StatsD({host: address.address, port: address.port, prefix: 'foo.', suffix: '.bar'});
 
         statsd.unique('test', 42, 0.5, function(){
           called = true;
@@ -664,7 +688,7 @@ describe('StatsD', function(){
         }
       }, function(server){
         var address = server.address(),
-            statsd = new StatsD(address.address, address.port);
+            statsd = new StatsD({host: address.address, port: address.port});
 
         statsd.unique(['a', 'b'], 42, null, function(error, bytes){
           called += 1;
