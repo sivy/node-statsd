@@ -680,4 +680,62 @@ describe('StatsD', function(){
     });
   });
 
+  describe('#batching', function() {
+    it('should send batches by 20 messages', function(finished) {
+      var message = 'a:1|c';
+      var batch = [];
+      for(var i = 0; i < 21; i++) { batch.push(message); }
+
+      udpTest(function(message, server) {
+        assert.equal(message, batch.join('\n'));
+        server.close();
+        finished();
+      }, function(server) {
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address,
+              port: address.port,
+              batch: true
+            });
+        for (var i = 0; i < 21; i++) {
+          statsd.increment('a', 1);
+        }
+      });
+    });
+    it('should send a batch after one second', function(finished) {
+      udpTest(function(message, server) {
+        assert.equal(message, 'a:1|c');
+        server.close();
+        finished();
+      }, function(server) {
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address,
+              port: address.port,
+              batch: true
+            });
+        statsd.increment('a', 1);
+      });
+    });
+    it('should send batches of different messages', function(finished) {
+      udpTest(function(message, server) {
+        assert.equal(message, 'a:1|c\nb:-1|c\nc:1|g\nd:2|h\ne:3|ms\nf:5|s');
+        server.close();
+        finished();
+      }, function(server) {
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address,
+              port: address.port,
+              batch: true
+            });
+        statsd.increment('a', 1);
+        statsd.decrement('b', 1);
+        statsd.gauge('c', 1);
+        statsd.histogram('d', 2);
+        statsd.timing('e', 3);
+        statsd.set('f', 5);
+      });
+    });
+  });
 });
