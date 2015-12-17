@@ -737,5 +737,21 @@ describe('StatsD', function(){
         statsd.set('f', 5);
       });
     });
+    it('should send pending messages after client is closed', function(finished) {
+      udpTest(function(message, server) {
+        assert.equal(message, 'a:1|c');
+        server.close();
+        finished();
+      }, function(server) {
+        var address = server.address(),
+        statsd = new StatsD({
+          host: address.address,
+          port: address.port,
+          batch: true
+        });
+        statsd.increment('a', 1);
+        statsd.close();
+      });
+    });
   });
 });
