@@ -680,4 +680,75 @@ describe('StatsD', function(){
     });
   });
 
+  describe('#batching', function() {
+    it('should send batches not longer than the max length', function(finished) {
+      udpTest(function(message, server) {
+        assert.equal(message, 'a:1|c\na:1|c');
+        server.close();
+        finished();
+      }, function(server) {
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address,
+              port: address.port,
+              batch: true,
+              maxBatchLength: 10
+            });
+        for (var i = 0; i < 5; i++) {
+          statsd.increment('a', 1);
+        }
+      });
+    });
+    it('should send a batch after one second', function(finished) {
+      udpTest(function(message, server) {
+        assert.equal(message, 'a:1|c');
+        server.close();
+        finished();
+      }, function(server) {
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address,
+              port: address.port,
+              batch: true
+            });
+        statsd.increment('a', 1);
+      });
+    });
+    it('should send batches of different messages', function(finished) {
+      udpTest(function(message, server) {
+        assert.equal(message, 'a:1|c\nb:-1|c\nc:1|g\nd:2|h\ne:3|ms\nf:5|s');
+        server.close();
+        finished();
+      }, function(server) {
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address,
+              port: address.port,
+              batch: true,
+            });
+        statsd.increment('a', 1);
+        statsd.decrement('b', 1);
+        statsd.gauge('c', 1);
+        statsd.histogram('d', 2);
+        statsd.timing('e', 3);
+        statsd.set('f', 5);
+      });
+    });
+    it('should send pending messages after client is closed', function(finished) {
+      udpTest(function(message, server) {
+        assert.equal(message, 'a:1|c');
+        server.close();
+        finished();
+      }, function(server) {
+        var address = server.address(),
+        statsd = new StatsD({
+          host: address.address,
+          port: address.port,
+          batch: true
+        });
+        statsd.increment('a', 1);
+        statsd.close();
+      });
+    });
+  });
 });
