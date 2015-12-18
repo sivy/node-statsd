@@ -681,13 +681,9 @@ describe('StatsD', function(){
   });
 
   describe('#batching', function() {
-    it('should send batches by 20 messages', function(finished) {
-      var message = 'a:1|c';
-      var batch = [];
-      for(var i = 0; i < 21; i++) { batch.push(message); }
-
+    it('should send batches not longer than the max length', function(finished) {
       udpTest(function(message, server) {
-        assert.equal(message, batch.join('\n'));
+        assert.equal(message, 'a:1|c\na:1|c');
         server.close();
         finished();
       }, function(server) {
@@ -695,9 +691,10 @@ describe('StatsD', function(){
             statsd = new StatsD({
               host: address.address,
               port: address.port,
-              batch: true
+              batch: true,
+              maxBatchLength: 10
             });
-        for (var i = 0; i < 21; i++) {
+        for (var i = 0; i < 5; i++) {
           statsd.increment('a', 1);
         }
       });
@@ -727,7 +724,7 @@ describe('StatsD', function(){
             statsd = new StatsD({
               host: address.address,
               port: address.port,
-              batch: true
+              batch: true,
             });
         statsd.increment('a', 1);
         statsd.decrement('b', 1);
