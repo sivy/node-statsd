@@ -527,6 +527,19 @@ describe('StatsD', function(){
     it('should send no increment stat when a mock Client is used', function(finished){
       assertMockClientMethod('increment', finished);
     });
+
+    it('should send 0 when value is 0', function(finished){
+        udpTest(function(message, server){
+        assert.equal(message, 'test:0|c');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD(address.address, address.port);
+
+        statsd.increment('test', 0);
+      });
+    });
   });
 
   describe('#decrement', function(finished){
@@ -602,6 +615,19 @@ describe('StatsD', function(){
 
     it('should send no decrement stat when a mock Client is used', function(finished){
       assertMockClientMethod('decrement', finished);
+    });
+
+    it('should send 0 when value is 0', function(finished){
+        udpTest(function(message, server){
+        assert.equal(message, 'test:0|c');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD(address.address, address.port);
+
+        statsd.decrement('test', 0);
+      });
     });
   });
 
