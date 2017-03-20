@@ -84,12 +84,13 @@ describe('StatsD', function(){
       assert.equal(global.statsd, undefined);
       assert.equal(statsd.mock, undefined);
       assert.deepEqual(statsd.global_tags, []);
+      assert.deepEqual(statsd.sampleRate, 1);
       assert.ok(!statsd.mock);
     });
 
     it('should set the proper values when specified', function(){
       // cachedDns isn't tested here; see below
-      var statsd = new StatsD('host', 1234, 'prefix', 'suffix', true, null, true, ['gtag']);
+      var statsd = new StatsD('host', 1234, 'prefix', 'suffix', true, null, true, ['gtag'], 0.6);
       assert.equal(statsd.host, 'host');
       assert.equal(statsd.port, 1234);
       assert.equal(statsd.prefix, 'prefix');
@@ -97,6 +98,7 @@ describe('StatsD', function(){
       assert.equal(statsd, global.statsd);
       assert.equal(statsd.mock, true);
       assert.deepEqual(statsd.global_tags, ['gtag']);
+      assert.deepEqual(statsd.sampleRate, 0.6);
     });
 
     it('should set the proper values with options hash format', function(){
@@ -108,7 +110,8 @@ describe('StatsD', function(){
         suffix: 'suffix',
         globalize: true,
         mock: true,
-        global_tags: ['gtag']
+        global_tags: ['gtag'],
+        sampleRate: 0.6
       });
       assert.equal(statsd.host, 'host');
       assert.equal(statsd.port, 1234);
@@ -117,6 +120,7 @@ describe('StatsD', function(){
       assert.equal(statsd, global.statsd);
       assert.equal(statsd.mock, true);
       assert.deepEqual(statsd.global_tags, ['gtag']);
+      assert.deepEqual(statsd.sampleRate, 0.6);
     });
 
     it('should attempt to cache a dns record if dnsCache is specified', function(done){
@@ -225,6 +229,72 @@ describe('StatsD', function(){
             });
 
         statsd.increment('test', 1337, ['foo']);
+      });
+    });
+  });
+
+  describe('#global_sample_rate', function(){
+    it('should not sample if it is not specified', function(finished){
+      udpTest(function(message, server){
+        assert.equal(message, 'test:1|c');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD(address.address, address.port);
+
+        statsd.increment('test');
+      });
+    });
+
+    it('should sample if global sample rate is specified', function(finished){
+      var called = false;
+      udpTest(function(message, server){
+        assert.equal(message, 'foo.test.bar:42|c|@0.6');
+        assert.equal(called, true);
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+          statsd = new StatsD(address.address, address.port, 'foo.', '.bar', true, false, false, [], 0.6);
+
+        statsd.increment('test', 42, function(){
+          called = true;
+        });
+      });
+    });
+
+    it('should sample if metric sample rate is specified', function(finished){
+      var called = false;
+      udpTest(function(message, server){
+        assert.equal(message, 'foo.test.bar:42|c|@0.5');
+        assert.equal(called, true);
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+          statsd = new StatsD(address.address, address.port, 'foo.', '.bar');
+
+        statsd.increment('test', 42, 0.5, function(){
+          called = true;
+        });
+      });
+    });
+
+    it('should honor metric sampleRate if both global and metric sample rate is specified', function(finished){
+      var called = false;
+      udpTest(function(message, server){
+        assert.equal(message, 'foo.test.bar:42|c|@0.5');
+        assert.equal(called, true);
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+          statsd = new StatsD(address.address, address.port, 'foo.', '.bar', true, false, false, [], 0.6);
+
+        statsd.increment('test', 42, 0.5, function(){
+          called = true;
+        });
       });
     });
   });
