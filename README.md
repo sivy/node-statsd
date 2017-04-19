@@ -4,7 +4,7 @@ A node.js client for [Etsy](http://etsy.com)'s [StatsD](https://github.com/etsy/
 
 This client will let you fire stats at your StatsD server from a node.js application.
 
-node-statsd Runs and is tested on Node 0.6+ on all *nix platforms and 0.8+ on all platforms including Windows.
+node-statsd Runs and is tested on Node 0.10+ on all platforms including Windows.
 
 [![Build Status](https://secure.travis-ci.org/sivy/node-statsd.png?branch=master)](http://travis-ci.org/sivy/node-statsd)
 
@@ -27,6 +27,7 @@ Parameters (specified as an options hash):
 * `cacheDns`:    Cache the initial dns lookup to *host* `default: false`
 * `mock`:        Create a mock StatsD instance, sending no stats to the server? `default: false`
 * `global_tags`: Optional tags that will be added to every metric `default: []`
+* `tcp`:         Optional boolean indicating if the Client should use a TCP connection `default: false`
 
 All StatsD methods have the same API:
 * `name`:       Stat name `required`

@@ -1,4 +1,5 @@
 var dgram = require('dgram'),
+    net = require('net'),
     assert = require('assert'),
     StatsD = require('../').StatsD;
 
@@ -19,6 +20,49 @@ function udpTest(test, callback){
   });
 
   server.bind(0, '127.0.0.1');
+}
+
+/**
+ * Creates a test harness for TCP, that binds to an ephemeral port
+ * @param test {Function} The test to run, should take message as the argument
+ * @param callback {Function} The callback to call after the server is listening
+ * @private
+ */
+function tcpTest(test, callback){
+
+  // This is the actual TCP server implementation of etsy/statsd
+  // Including the metrics handler which splits the TCP packet on "\n"
+  // to deal with multiple metrics in a single TCP stream data flush
+  var server = net.createServer(function(stream) {
+    stream.setEncoding('ascii');
+
+    var buffer = '';
+    stream.on('data', function(data) {
+        buffer += data;
+        var offset = buffer.lastIndexOf("\n");
+        if (offset > -1) {
+           var packet = buffer.slice(0, offset + 1);
+           buffer = buffer.slice(offset + 1);
+
+           var metrics;
+           if (packet.indexOf("\n") > -1) {
+            metrics = packet.split("\n");
+           } else {
+            metrics = [ packet ];
+           }
+
+           metrics.forEach(function(metric) {
+             test(metric, server);
+           });
+        }
+    });
+  });
+
+  server.on('listening', function(){
+    callback(server);
+  });
+
+  server.listen(0, '127.0.0.1');
 }
 
 /**
@@ -84,12 +128,13 @@ describe('StatsD', function(){
       assert.equal(global.statsd, undefined);
       assert.equal(statsd.mock, undefined);
       assert.deepEqual(statsd.global_tags, []);
+      assert.ok(!statsd.tcp);
       assert.ok(!statsd.mock);
     });
 
     it('should set the proper values when specified', function(){
       // cachedDns isn't tested here; see below
-      var statsd = new StatsD('host', 1234, 'prefix', 'suffix', true, null, true, ['gtag']);
+      var statsd = new StatsD('host', 1234, 'prefix', 'suffix', true, null, true, ['gtag'], true);
       assert.equal(statsd.host, 'host');
       assert.equal(statsd.port, 1234);
       assert.equal(statsd.prefix, 'prefix');
@@ -97,6 +142,7 @@ describe('StatsD', function(){
       assert.equal(statsd, global.statsd);
       assert.equal(statsd.mock, true);
       assert.deepEqual(statsd.global_tags, ['gtag']);
+      assert.equal(statsd.tcp, true);
     });
 
     it('should set the proper values with options hash format', function(){
@@ -108,7 +154,8 @@ describe('StatsD', function(){
         suffix: 'suffix',
         globalize: true,
         mock: true,
-        global_tags: ['gtag']
+        global_tags: ['gtag'],
+        tcp: true
       });
       assert.equal(statsd.host, 'host');
       assert.equal(statsd.port, 1234);
@@ -117,6 +164,7 @@ describe('StatsD', function(){
       assert.equal(statsd, global.statsd);
       assert.equal(statsd.mock, true);
       assert.deepEqual(statsd.global_tags, ['gtag']);
+      assert.equal(statsd.tcp, true);
     });
 
     it('should attempt to cache a dns record if dnsCache is specified', function(done){
@@ -178,6 +226,13 @@ describe('StatsD', function(){
       assert.ok(statsd.socket instanceof dgram.Socket);
     });
 
+    it('should create a socket variable that is an instance of net.Socket if set to TCP', function(){
+      var statsd = new StatsD({
+        tcp: true
+      });
+      assert.ok(statsd.socket instanceof net.Socket);
+    });
+
   });
 
   describe('#global_tags', function(){
@@ -189,6 +244,23 @@ describe('StatsD', function(){
       }, function(server){
         var address = server.address(),
             statsd = new StatsD(address.address, address.port);
+
+        statsd.increment('test');
+      });
+    });
+
+    it('should not add global tags if they are not specified (TCP connection)', function(finished){
+      tcpTest(function(message, server){
+        assert.equal(message, 'test:1|c');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
 
         statsd.increment('test');
       });
@@ -211,6 +283,24 @@ describe('StatsD', function(){
       });
     });
 
+    it('should add global tags if they are specified (TCP connection)', function(finished){
+      tcpTest(function(message, server){
+        assert.equal(message, 'test:1|c|#gtag');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address,
+              port: address.port,
+              global_tags: ['gtag'],
+              tcp: true
+            });
+
+        statsd.increment('test');
+      });
+    });
+
     it('should combine global tags and metric tags', function(finished){
       udpTest(function(message, server){
         assert.equal(message, 'test:1337|c|#foo,gtag');
@@ -222,6 +312,24 @@ describe('StatsD', function(){
               host: address.address,
               port: address.port,
               global_tags: ['gtag']
+            });
+
+        statsd.increment('test', 1337, ['foo']);
+      });
+    });
+
+    it('should combine global tags and metric tags (TCP connection)', function(finished){
+      tcpTest(function(message, server){
+        assert.equal(message, 'test:1337|c|#foo,gtag');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address,
+              port: address.port,
+              global_tags: ['gtag'],
+              tcp: true
             });
 
         statsd.increment('test', 1337, ['foo']);
@@ -243,6 +351,23 @@ describe('StatsD', function(){
       });
     });
 
+    it('should send proper time format without prefix, suffix, sampling and callback (TCP connection)', function(finished){
+      tcpTest(function(message, server){
+        assert.equal(message, 'test:42|ms');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
+
+        statsd.timing('test', 42);
+      });
+    });
+
     it('should send proper time format with tags', function(finished){
       udpTest(function(message, server){
         assert.equal(message, 'test:42|ms|#foo,bar');
@@ -251,6 +376,23 @@ describe('StatsD', function(){
       }, function(server){
         var address = server.address(),
             statsd = new StatsD(address.address, address.port);
+
+        statsd.timing('test', 42, ['foo', 'bar']);
+      });
+    });
+
+    it('should send proper time format with tags (TCP connection)', function(finished){
+      tcpTest(function(message, server){
+        assert.equal(message, 'test:42|ms|#foo,bar');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
 
         statsd.timing('test', 42, ['foo', 'bar']);
       });
@@ -266,6 +408,29 @@ describe('StatsD', function(){
       }, function(server){
         var address = server.address(),
             statsd = new StatsD(address.address, address.port, 'foo.', '.bar');
+
+        statsd.timing('test', 42, 0.5, function(){
+          called = true;
+        });
+      });
+    });
+
+    it('should send proper time format with prefix, suffix, sampling and callback (TCP connection)', function(finished){
+      var called = false;
+      tcpTest(function(message, server){
+        assert.equal(message, 'foo.test.bar:42|ms|@0.5');
+        assert.equal(called, true);
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port, 
+              prefix: 'foo.', 
+              suffix: '.bar',
+              tcp: true
+            });
 
         statsd.timing('test', 42, 0.5, function(){
           called = true;
@@ -299,6 +464,36 @@ describe('StatsD', function(){
       });
     });
 
+    it('should properly send a and b with the same value (TCP connection)', function(finished){
+      var called = false,
+          messageNumber = 0;
+
+      tcpTest(function(message, server){
+        if(messageNumber === 0){
+          assert.equal(message, 'a:42|ms');
+          messageNumber += 1;
+        } else {
+          assert.equal(message, 'b:42|ms');
+          server.close();
+          finished();
+        }
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address,
+              port: address.port,
+              tcp: true
+            });
+
+        statsd.timing(['a', 'b'], 42, null, function(error, bytes){
+          called += 1;
+          assert.ok(called === 1); //ensure it only gets called once
+          assert.equal(error, null);
+          assert.equal(bytes, 0);
+        });
+      });
+    });
+
     it('should send no timing stat when a mock Client is used', function(finished){
       assertMockClientMethod('timing', finished);
     });
@@ -318,6 +513,23 @@ describe('StatsD', function(){
       });
     });
 
+    it('should send proper histogram format without prefix, suffix, sampling and callback (TCP connection)', function(finished){
+      tcpTest(function(message, server){
+        assert.equal(message, 'test:42|h');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
+
+        statsd.histogram('test', 42);
+      });
+    });
+
     it('should send proper histogram format with tags', function(finished){
       udpTest(function(message, server){
         assert.equal(message, 'test:42|h|#foo,bar');
@@ -326,6 +538,23 @@ describe('StatsD', function(){
       }, function(server){
         var address = server.address(),
             statsd = new StatsD(address.address, address.port);
+
+        statsd.histogram('test', 42, ['foo', 'bar']);
+      });
+    });
+
+    it('should send proper histogram format with tags (TCP connection)', function(finished){
+      tcpTest(function(message, server){
+        assert.equal(message, 'test:42|h|#foo,bar');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
 
         statsd.histogram('test', 42, ['foo', 'bar']);
       });
@@ -341,6 +570,29 @@ describe('StatsD', function(){
       }, function(server){
         var address = server.address(),
             statsd = new StatsD(address.address, address.port, 'foo.', '.bar');
+
+        statsd.histogram('test', 42, 0.5, function(){
+          called = true;
+        });
+      });
+    });
+
+    it('should send proper histogram format with prefix, suffix, sampling and callback (TCP connection)', function(finished){
+      var called = false;
+      tcpTest(function(message, server){
+        assert.equal(message, 'foo.test.bar:42|h|@0.5');
+        assert.equal(called, true);
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port, 
+              prefix: 'foo.', 
+              suffix: '.bar',
+              tcp: true
+            });
 
         statsd.histogram('test', 42, 0.5, function(){
           called = true;
@@ -374,6 +626,36 @@ describe('StatsD', function(){
       });
     });
 
+    it('should properly send a and b with the same value (TCP connection)', function(finished){
+      var called = 0,
+          messageNumber = 0;
+
+      tcpTest(function(message, server){
+        if(messageNumber === 0){
+          assert.equal(message, 'a:42|h');
+          messageNumber += 1;
+        } else {
+          assert.equal(message, 'b:42|h');
+          server.close();
+          finished();
+        }
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address,
+              port: address.port,
+              tcp: true
+            });
+
+        statsd.histogram(['a', 'b'], 42, null, function(error, bytes){
+          called += 1;
+          assert.ok(called === 1); //ensure it only gets called once
+          assert.equal(error, null);
+          assert.equal(bytes, 0);
+        });
+      });
+    });
+
     it('should send no histogram stat when a mock Client is used', function(finished){
       assertMockClientMethod('histogram', finished);
     });
@@ -393,6 +675,23 @@ describe('StatsD', function(){
       });
     });
 
+    it('should send proper gauge format without prefix, suffix, sampling and callback (TCP connection)', function(finished){
+      tcpTest(function(message, server){
+        assert.equal(message, 'test:42|g');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
+
+        statsd.gauge('test', 42);
+      });
+    });
+
     it('should send proper gauge format with tags', function(finished){
       udpTest(function(message, server){
         assert.equal(message, 'test:42|g|#foo,bar');
@@ -401,6 +700,23 @@ describe('StatsD', function(){
       }, function(server){
         var address = server.address(),
             statsd = new StatsD(address.address, address.port);
+
+        statsd.gauge('test', 42, ['foo', 'bar']);
+      });
+    });
+
+    it('should send proper gauge format with tags (TCP connection)', function(finished){
+      tcpTest(function(message, server){
+        assert.equal(message, 'test:42|g|#foo,bar');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
 
         statsd.gauge('test', 42, ['foo', 'bar']);
       });
@@ -416,6 +732,29 @@ describe('StatsD', function(){
       }, function(server){
         var address = server.address(),
             statsd = new StatsD(address.address, address.port, 'foo.', '.bar');
+
+        statsd.gauge('test', 42, 0.5, function(){
+          called = true;
+        });
+      });
+    });
+
+    it('should send proper gauge format with prefix, suffix, sampling and callback (TCP connection)', function(finished){
+      var called = false;
+      tcpTest(function(message, server){
+        assert.equal(message, 'foo.test.bar:42|g|@0.5');
+        assert.equal(called, true);
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port, 
+              prefix: 'foo.', 
+              suffix: '.bar',
+              tcp: true
+            });
 
         statsd.gauge('test', 42, 0.5, function(){
           called = true;
@@ -449,6 +788,36 @@ describe('StatsD', function(){
       });
     });
 
+    it('should properly send a and b with the same value (TCP connection)', function(finished){
+      var called = 0,
+          messageNumber = 0;
+
+      tcpTest(function(message, server){
+        if(messageNumber === 0){
+          assert.equal(message, 'a:42|g');
+          messageNumber += 1;
+        } else {
+          assert.equal(message, 'b:42|g');
+          server.close();
+          finished();
+        }
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
+
+        statsd.gauge(['a', 'b'], 42, null, function(error, bytes){
+          called += 1;
+          assert.ok(called === 1); //ensure it only gets called once
+          assert.equal(error, null);
+          assert.equal(bytes, 0);
+        });
+      });
+    });
+
     it('should send no gauge stat when a mock Client is used', function(finished){
       assertMockClientMethod('gauge', finished);
     });
@@ -468,6 +837,23 @@ describe('StatsD', function(){
       });
     });
 
+    it('should send count by 1 when no params are specified (TCP connection)', function(finished){
+      tcpTest(function(message, server){
+        assert.equal(message, 'test:1|c');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
+
+        statsd.increment('test');
+      });
+    });
+
     it('should send proper count format with tags', function(finished){
       udpTest(function(message, server){
         assert.equal(message, 'test:42|c|#foo,bar');
@@ -476,6 +862,23 @@ describe('StatsD', function(){
       }, function(server){
         var address = server.address(),
             statsd = new StatsD(address.address, address.port);
+
+        statsd.increment('test', 42, ['foo', 'bar']);
+      });
+    });
+
+    it('should send proper count format with tags (TCP connection)', function(finished){
+      tcpTest(function(message, server){
+        assert.equal(message, 'test:42|c|#foo,bar');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
 
         statsd.increment('test', 42, ['foo', 'bar']);
       });
@@ -491,6 +894,29 @@ describe('StatsD', function(){
       }, function(server){
         var address = server.address(),
             statsd = new StatsD(address.address, address.port, 'foo.', '.bar');
+
+        statsd.increment('test', 42, 0.5, function(){
+          called = true;
+        });
+      });
+    });
+
+    it('should send proper count format with prefix, suffix, sampling and callback (TCP connection)', function(finished){
+      var called = false;
+      tcpTest(function(message, server){
+        assert.equal(message, 'foo.test.bar:42|c|@0.5');
+        assert.equal(called, true);
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port, 
+              prefix: 'foo.', 
+              suffix: '.bar',
+              tcp: true
+            });
 
         statsd.increment('test', 42, 0.5, function(){
           called = true;
@@ -524,6 +950,36 @@ describe('StatsD', function(){
       });
     });
 
+    it('should properly send a and b with the same value (TCP connection)', function(finished){
+      var called = 0,
+          messageNumber = 0;
+
+      tcpTest(function(message, server){
+        if(messageNumber === 0){
+          assert.equal(message, 'a:1|c');
+          messageNumber += 1;
+        } else {
+          assert.equal(message, 'b:1|c');
+          server.close();
+          finished();
+        }
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
+
+        statsd.increment(['a', 'b'], null, function(error, bytes){
+          called += 1;
+          assert.ok(called === 1); //ensure it only gets called once
+          assert.equal(error, null);
+          assert.equal(bytes, 0);
+        });
+      });
+    });
+
     it('should send no increment stat when a mock Client is used', function(finished){
       assertMockClientMethod('increment', finished);
     });
@@ -543,6 +999,23 @@ describe('StatsD', function(){
       });
     });
 
+    it('should send count by -1 when no params are specified (TCP connection)', function(finished){
+      tcpTest(function(message, server){
+        assert.equal(message, 'test:-1|c');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
+
+        statsd.decrement('test');
+      });
+    });
+
     it('should send proper count format with tags', function(finished){
       udpTest(function(message, server){
         assert.equal(message, 'test:-42|c|#foo,bar');
@@ -551,6 +1024,23 @@ describe('StatsD', function(){
       }, function(server){
         var address = server.address(),
             statsd = new StatsD(address.address, address.port);
+
+        statsd.decrement('test', 42, ['foo', 'bar']);
+      });
+    });
+
+    it('should send proper count format with tags (TCP connection)', function(finished){
+      tcpTest(function(message, server){
+        assert.equal(message, 'test:-42|c|#foo,bar');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
 
         statsd.decrement('test', 42, ['foo', 'bar']);
       });
@@ -573,6 +1063,28 @@ describe('StatsD', function(){
       });
     });
 
+    it('should send proper count format with prefix, suffix, sampling and callback (TCP connection)', function(finished){
+      var called = false;
+      tcpTest(function(message, server){
+        assert.equal(message, 'foo.test.bar:-42|c|@0.5');
+        assert.equal(called, true);
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port, 
+              prefix: 'foo.', 
+              suffix: '.bar',
+              tcp: true
+            });
+
+        statsd.decrement('test', 42, 0.5, function(){
+          called = true;
+        });
+      });
+    });
 
     it('should properly send a and b with the same value', function(finished){
       var called = 0,
@@ -600,6 +1112,36 @@ describe('StatsD', function(){
       });
     });
 
+    it('should properly send a and b with the same value (TCP connection)', function(finished){
+      var called = 0,
+          messageNumber = 0;
+
+      tcpTest(function(message, server){
+        if(messageNumber === 0){
+          assert.equal(message, 'a:-1|c');
+          messageNumber += 1;
+        } else {
+          assert.equal(message, 'b:-1|c');
+          server.close();
+          finished();
+        }
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
+
+        statsd.decrement(['a', 'b'], null, function(error, bytes){
+          called += 1;
+          assert.ok(called === 1); //ensure it only gets called once
+          assert.equal(error, null);
+          assert.equal(bytes, 0);
+        });
+      });
+    });
+
     it('should send no decrement stat when a mock Client is used', function(finished){
       assertMockClientMethod('decrement', finished);
     });
@@ -619,6 +1161,23 @@ describe('StatsD', function(){
       });
     });
 
+    it('should send proper set format without prefix, suffix, sampling and callback (TCP connection)', function(finished){
+      tcpTest(function(message, server){
+        assert.equal(message, 'test:42|s');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
+
+        statsd.set('test', 42);
+      });
+    });
+
     it('should send proper set format with tags', function(finished){
       udpTest(function(message, server){
         assert.equal(message, 'test:42|s|#foo,bar');
@@ -627,6 +1186,23 @@ describe('StatsD', function(){
       }, function(server){
         var address = server.address(),
             statsd = new StatsD(address.address, address.port);
+
+        statsd.set('test', 42, ['foo', 'bar']);
+      });
+    });
+
+    it('should send proper set format with tags (TCP connection)', function(finished){
+      tcpTest(function(message, server){
+        assert.equal(message, 'test:42|s|#foo,bar');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
 
         statsd.set('test', 42, ['foo', 'bar']);
       });
@@ -642,6 +1218,29 @@ describe('StatsD', function(){
       }, function(server){
         var address = server.address(),
             statsd = new StatsD(address.address, address.port, 'foo.', '.bar');
+
+        statsd.unique('test', 42, 0.5, function(){
+          called = true;
+        });
+      });
+    });
+
+    it('should send proper set format with prefix, suffix, sampling and callback (TCP connection)', function(finished){
+      var called = false;
+      tcpTest(function(message, server){
+        assert.equal(message, 'foo.test.bar:42|s|@0.5');
+        assert.equal(called, true);
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port, 
+              prefix: 'foo.', 
+              suffix: '.bar',
+              tcp: true
+            });
 
         statsd.unique('test', 42, 0.5, function(){
           called = true;
@@ -671,6 +1270,36 @@ describe('StatsD', function(){
           assert.ok(called === 1); //ensure it only gets called once
           assert.equal(error, null);
           assert.equal(bytes, 12);
+        });
+      });
+    });
+
+    it('should properly send a and b with the same value (TCP connection)', function(finished){
+      var called = 0,
+          messageNumber = 0;
+
+      tcpTest(function(message, server){
+        if(messageNumber === 0){
+          assert.equal(message, 'a:42|s');
+          messageNumber += 1;
+        } else {
+          assert.equal(message, 'b:42|s');
+          server.close();
+          finished();
+        }
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address, 
+              port: address.port,
+              tcp: true
+            });
+
+        statsd.unique(['a', 'b'], 42, null, function(error, bytes){
+          called += 1;
+          assert.ok(called === 1); //ensure it only gets called once
+          assert.equal(error, null);
+          assert.equal(bytes, 0);
         });
       });
     });
