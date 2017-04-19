@@ -9,7 +9,7 @@
   }
 , "bugs" : { "url" : "https://github.com/sivy/node-statsd/issues" }
 , "directories" : { "lib" : "./lib/" }
-, "engines" : { "node" : ">=0.1.97" }
+, "engines" : { "node" : ">=0.10" }
 , "scripts": {
       "test": "mocha -R spec"
     }
