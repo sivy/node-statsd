@@ -57,7 +57,8 @@ export default class Client {
      * @param tags The Array of tags to add to metrics. Optional.
      * @param callback Callback when message is done being delivered. Optional.
      */
-    increment(stat: string | string[], value: any, sampleRate?: number, tags?: string[], callback?: CallbackFn): void;
+    increment(stats: string | string[], value: any, tags: string[], callback?: CallbackFn): void;
+    increment(stats: string | string[], value: any, sampleRate: number, tags: string[], callback?: CallbackFn): void;
     /**
      * Decrements a stat by a specified amount
      * @param stat The stat(s) to send
@@ -102,6 +103,7 @@ export default class Client {
      * @param tags The Array of tags to add to metrics. Optional.
      * @param callback Callback when message is done being delivered. Optional.
      */
+    sendAll(stat: string | string[], value: any, type: string, tags?: string[], callback?: CallbackFn): void;
     sendAll(stat: string | string[], value: any, type: string, sampleRate?: number, tags?: string[], callback?: CallbackFn): void;
     /**
      * Sends a stat across the wire

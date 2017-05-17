@@ -54,12 +54,12 @@ export default class Client {
         if (typeof hostOrOptions === 'object') {
             this.host = hostOrOptions.host;
             this.port = hostOrOptions.port;
-            this.prefix = hostOrOptions.prefix;
-            this.suffix = hostOrOptions.suffix;
+            this.prefix = hostOrOptions.prefix || '';
+            this.suffix = hostOrOptions.suffix || '';
             this.globalize = hostOrOptions.globalize;
             this.cacheDns = hostOrOptions.cacheDns;
             this.mock = hostOrOptions.mock;
-            this.global_tags = hostOrOptions.global_tags;
+            this.global_tags = hostOrOptions.global_tags || [];
         } else {
             this.host = hostOrOptions;
         }
@@ -97,8 +97,11 @@ export default class Client {
      * @param tags The Array of tags to add to metrics. Optional.
      * @param callback Callback when message is done being delivered. Optional.
      */
-    increment(stat: string|string[], value: any, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
-        this.sendAll(stat, value || 1, 'c', sampleRate, tags, callback);
+    increment(stats: string | string[], value: any, tags: string[], callback?: CallbackFn): void;
+    increment(stats: string | string[], value: any, sampleRate: number, tags: string[], callback?: CallbackFn): void;
+    increment(stat: string | string[], value: any, sampleRateOrTags?: number | string[], tagsOrCallback?: string[] | CallbackFn, callback?: CallbackFn) {
+
+        this.sendAll(stat, value || 1, 'c', sampleRateOrTags as number, tagsOrCallback as string[], callback);
     }
 
     /**
@@ -109,7 +112,7 @@ export default class Client {
      * @param tags The Array of tags to add to metrics. Optional.
      * @param callback Callback when message is done being delivered. Optional.
      */
-    decrement(stat: string|string[], value: any, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
+    decrement(stat: string | string[], value: any, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
         this.sendAll(stat, -value || -1, 'c', sampleRate, tags, callback);
     };
 
@@ -121,7 +124,7 @@ export default class Client {
      * @param tags The Array of tags to add to metrics. Optional.
      * @param callback Callback when message is done being delivered. Optional.
      */
-    histogram(stat: string|string[], value: any, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
+    histogram(stat: string | string[], value: any, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
         this.sendAll(stat, value, 'h', sampleRate, tags, callback);
     };
 
@@ -134,7 +137,7 @@ export default class Client {
      * @param tags The Array of tags to add to metrics. Optional.
      * @param callback Callback when message is done being delivered. Optional.
      */
-    gauge(stat: string|string[], value: any, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
+    gauge(stat: string | string[], value: any, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
         this.sendAll(stat, value, 'g', sampleRate, tags, callback);
     };
 
@@ -147,9 +150,10 @@ export default class Client {
      * @param callback Callback when message is done being delivered. Optional.
      */
 
-    set(stat: string|string[], value: any, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
+    set(stat: string | string[], value: any, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
         this.sendAll(stat, value, 's', sampleRate, tags, callback);
     };
+
 
     /**
      * Checks if stats is an array and sends all stats calling back once all have sent
@@ -159,10 +163,25 @@ export default class Client {
      * @param tags The Array of tags to add to metrics. Optional.
      * @param callback Callback when message is done being delivered. Optional.
      */
-    sendAll(stat: string|string[], value: any, type: string, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
+    sendAll(stat: string | string[], value: any, type: string, tags?: string[], callback?: CallbackFn): void;
+    sendAll(stat: string | string[], value: any, type: string, sampleRate?: number, tags?: string[], callback?: CallbackFn): void;
+    sendAll(stat: string | string[], value: any, type: string, sampleRateOrTags?: number | string[], tagsOrCallback?: string[] | CallbackFn, callback?: CallbackFn) {
         let completed = 0,
             calledback = false,
-            sentBytes = 0;
+            sentBytes = 0,
+            tags: string[] | undefined,
+            sampleRate: number | undefined;
+
+        if (sampleRateOrTags && typeof sampleRateOrTags !== 'number' && typeof tagsOrCallback === 'function') {
+            callback = tagsOrCallback;
+            tags = sampleRateOrTags;
+            sampleRate = undefined;
+        }
+
+        if (tagsOrCallback && !Array.isArray(tagsOrCallback)) {
+            callback = tagsOrCallback;
+            tags = undefined;
+        }
 
         if (Array.isArray(stat)) {
             stat.forEach((item) => this.send(item, value, type, sampleRate, tags, onSend));
@@ -202,7 +221,7 @@ export default class Client {
      * @param tags The Array of tags to add to metrics
      * @param callback Callback when message is done being delivered. Optional.
      */
-    send(stat: string|string[], value: any, type: string, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
+    send(stat: string | string[], value: any, type: string, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
         var message = this.prefix + stat + this.suffix + ':' + value + '|' + type,
             buf: Buffer,
             merged_tags: string[] = [];
