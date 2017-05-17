@@ -20,8 +20,10 @@
     "node": ">=0.1.97"
   },
   "scripts": {
+    "pretest": "tsc",
     "test": "mocha -R spec"
   },
+  "typing": "lib/statsd.d.ts",
   "dependencies": {},
   "devDependencies": {
     "@types/node": "^7.0.18",

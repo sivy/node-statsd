@@ -2,17 +2,40 @@ import * as dgram from 'dgram';
 import * as dns from 'dns';
 
 /** A NodeJS style callback function that may resolve to a number */
-type CallbackFn = (error: NodeJS.ErrnoException | null, value?: number) => void;
+export type CallbackFn = (error: NodeJS.ErrnoException | null, value?: number) => void;
+
+export type ClientOptions = {
+    host: string;
+    /** The port to connect to default: 8125 */
+    port: number;
+    /** An optional prefix to assign to each stat name sent */
+    prefix: string;
+    /** An optional suffix to assign to each stat name sent */
+    suffix: string;
+    /** An optional boolean to add "statsd" as an object in the global namespace */
+    globalize: boolean | undefined;
+    /** An optional option to only lookup the hostname -> ip address once */
+    cacheDns: boolean | undefined;
+    /** An optional boolean indicating this Client is a mock object, no stats are sent. */
+    mock: boolean | undefined;
+    /** Optional tags that will be added to every metric */
+    global_tags: string[];
+}
 
 /** StatsD client */
 export default class Client {
     public unique = this.set;
 
     private socket = dgram.createSocket('udp4');
+    private host: string;
 
     constructor(
+        /** Initialization options */
+        hostOrOptions: ClientOptions
+    )
+    constructor(
         /** The host to connect to default: localhost */
-        private host: string = 'localhost',
+        hostOrOptions: string | ClientOptions = 'localhost',
         /** The port to connect to default: 8125 */
         private port: number = 8125,
         /** An optional prefix to assign to each stat name sent */
@@ -20,14 +43,27 @@ export default class Client {
         /** An optional suffix to assign to each stat name sent */
         private suffix: string = '',
         /** An optional boolean to add "statsd" as an object in the global namespace */
-        private globalize: boolean = false,
+        private globalize: boolean | undefined = undefined,
         /** An optional option to only lookup the hostname -> ip address once */
-        private cacheDns: boolean = false,
+        private cacheDns: boolean | undefined = undefined,
         /** An optional boolean indicating this Client is a mock object, no stats are sent. */
-        private mock: boolean = false,
-        /** {Array=} Optional tags that will be added to every metric */
-        private global_tags: any[],
+        private mock: boolean | undefined = undefined,
+        /** Optional tags that will be added to every metric */
+        private global_tags: string[] = [],
     ) {
+        if (typeof hostOrOptions === 'object') {
+            this.host = hostOrOptions.host;
+            this.port = hostOrOptions.port;
+            this.prefix = hostOrOptions.prefix;
+            this.suffix = hostOrOptions.suffix;
+            this.globalize = hostOrOptions.globalize;
+            this.cacheDns = hostOrOptions.cacheDns;
+            this.mock = hostOrOptions.mock;
+            this.global_tags = hostOrOptions.global_tags;
+        } else {
+            this.host = hostOrOptions;
+        }
+
         if (this.cacheDns === true) {
             dns.lookup(this.host, (err, address, family) => {
                 if (err === null) {
@@ -208,3 +244,5 @@ export default class Client {
         this.socket.close();
     }
 }
+
+exports.StatsD = Client;
