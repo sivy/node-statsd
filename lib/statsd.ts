@@ -1,45 +1,56 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-var dgram = require("dgram");
-var dns = require("dns");
+import * as dgram from 'dgram';
+import * as dns from 'dns';
+
+/** A NodeJS style callback function that may resolve to a number */
+export type CallbackFn = (error: NodeJS.ErrnoException | null, value?: number) => void;
+
+export type ClientOptions = {
+    host: string;
+    /** The port to connect to default: 8125 */
+    port: number;
+    /** An optional prefix to assign to each stat name sent */
+    prefix: string;
+    /** An optional suffix to assign to each stat name sent */
+    suffix: string;
+    /** An optional boolean to add "statsd" as an object in the global namespace */
+    globalize: boolean | undefined;
+    /** An optional option to only lookup the hostname -> ip address once */
+    cacheDns: boolean | undefined;
+    /** An optional boolean indicating this Client is a mock object, no stats are sent. */
+    mock: boolean | undefined;
+    /** Optional tags that will be added to every metric */
+    global_tags: string[];
+}
+
 /** StatsD client */
-var Client = (function () {
-    function Client(
+export default class Client {
+    public unique = this.set;
+
+    private socket = dgram.createSocket('udp4');
+    private host: string;
+
+    constructor(
+        /** Initialization options */
+        hostOrOptions: ClientOptions
+    )
+    constructor(
         /** The host to connect to default: localhost */
-        hostOrOptions, 
+        hostOrOptions: string | ClientOptions = 'localhost',
         /** The port to connect to default: 8125 */
-        port, 
+        private port: number = 8125,
         /** An optional prefix to assign to each stat name sent */
-        prefix, 
+        private prefix: string = '',
         /** An optional suffix to assign to each stat name sent */
-        suffix, 
+        private suffix: string = '',
         /** An optional boolean to add "statsd" as an object in the global namespace */
-        globalize, 
+        private globalize: boolean | undefined = undefined,
         /** An optional option to only lookup the hostname -> ip address once */
-        cacheDns, 
+        private cacheDns: boolean | undefined = undefined,
         /** An optional boolean indicating this Client is a mock object, no stats are sent. */
-        mock, 
+        private mock: boolean | undefined = undefined,
         /** Optional tags that will be added to every metric */
-        global_tags) {
-        /** The host to connect to default: localhost */
-        if (hostOrOptions === void 0) { hostOrOptions = 'localhost'; }
-        if (port === void 0) { port = 8125; }
-        if (prefix === void 0) { prefix = ''; }
-        if (suffix === void 0) { suffix = ''; }
-        if (globalize === void 0) { globalize = undefined; }
-        if (cacheDns === void 0) { cacheDns = undefined; }
-        if (mock === void 0) { mock = undefined; }
-        if (global_tags === void 0) { global_tags = []; }
-        var _this = this;
-        this.port = port;
-        this.prefix = prefix;
-        this.suffix = suffix;
-        this.globalize = globalize;
-        this.cacheDns = cacheDns;
-        this.mock = mock;
-        this.global_tags = global_tags;
-        this.unique = this.set;
-        this.socket = dgram.createSocket('udp4');
+        private global_tags: string[] = [],
+    ) {
         if (typeof hostOrOptions === 'object') {
             this.host = hostOrOptions.host;
             this.port = hostOrOptions.port;
@@ -49,21 +60,23 @@ var Client = (function () {
             this.cacheDns = hostOrOptions.cacheDns;
             this.mock = hostOrOptions.mock;
             this.global_tags = hostOrOptions.global_tags || [];
-        }
-        else {
+        } else {
             this.host = hostOrOptions;
         }
+
         if (this.cacheDns === true) {
-            dns.lookup(this.host, function (err, address, family) {
+            dns.lookup(this.host, (err, address, family) => {
                 if (err === null) {
-                    _this.host = address;
+                    this.host = address;
                 }
             });
         }
+
         if (this.globalize) {
-            global.statsd = this;
+            (global as any).statsd = this;
         }
     }
+
     /**
      * Represents the timing stat
      * @param stat The stat(s) to send
@@ -72,12 +85,25 @@ var Client = (function () {
      * @param tags The Array of tags to add to metrics. Optional.
      * @param callback Callback when message is done being delivered. Optional.
      */
-    Client.prototype.timing = function (stat, time, sampleRate, tags, callback) {
+    timing(stat: string | string[], time: number, sampleRate?: number, tags?: any[], callback?: CallbackFn) {
         this.sendAll(stat, time, 'ms', sampleRate, tags, callback);
-    };
-    Client.prototype.increment = function (stat, value, sampleRateOrTags, tagsOrCallback, callback) {
-        this.sendAll(stat, value || 1, 'c', sampleRateOrTags, tagsOrCallback, callback);
-    };
+    }
+
+    /**
+     * Increments a stat by a specified amount
+     * @param stat The stat(s) to send
+     * @param value The value to send
+     * @param sampleRate The Number of times to sample (0 to 1). Optional.
+     * @param tags The Array of tags to add to metrics. Optional.
+     * @param callback Callback when message is done being delivered. Optional.
+     */
+    increment(stats: string | string[], value: any, tags: string[], callback?: CallbackFn): void;
+    increment(stats: string | string[], value: any, sampleRate: number, tags: string[], callback?: CallbackFn): void;
+    increment(stat: string | string[], value: any, sampleRateOrTags?: number | string[], tagsOrCallback?: string[] | CallbackFn, callback?: CallbackFn) {
+
+        this.sendAll(stat, value || 1, 'c', sampleRateOrTags as number, tagsOrCallback as string[], callback);
+    }
+
     /**
      * Decrements a stat by a specified amount
      * @param stat The stat(s) to send
@@ -86,10 +112,10 @@ var Client = (function () {
      * @param tags The Array of tags to add to metrics. Optional.
      * @param callback Callback when message is done being delivered. Optional.
      */
-    Client.prototype.decrement = function (stat, value, sampleRate, tags, callback) {
+    decrement(stat: string | string[], value: any, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
         this.sendAll(stat, -value || -1, 'c', sampleRate, tags, callback);
     };
-    ;
+
     /**
      * Represents the histogram stat
      * @param stat The stat(s) to send
@@ -98,10 +124,11 @@ var Client = (function () {
      * @param tags The Array of tags to add to metrics. Optional.
      * @param callback Callback when message is done being delivered. Optional.
      */
-    Client.prototype.histogram = function (stat, value, sampleRate, tags, callback) {
+    histogram(stat: string | string[], value: any, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
         this.sendAll(stat, value, 'h', sampleRate, tags, callback);
     };
-    ;
+
+
     /**
      * Gauges a stat by a specified amount
      * @param stat The stat(s) to send
@@ -110,10 +137,10 @@ var Client = (function () {
      * @param tags The Array of tags to add to metrics. Optional.
      * @param callback Callback when message is done being delivered. Optional.
      */
-    Client.prototype.gauge = function (stat, value, sampleRate, tags, callback) {
+    gauge(stat: string | string[], value: any, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
         this.sendAll(stat, value, 'g', sampleRate, tags, callback);
     };
-    ;
+
     /**
      * Counts unique values by a specified amount
      * @param stat The stat(s) to send
@@ -122,48 +149,69 @@ var Client = (function () {
      * @param tags The Array of tags to add to metrics. Optional.
      * @param callback Callback when message is done being delivered. Optional.
      */
-    Client.prototype.set = function (stat, value, sampleRate, tags, callback) {
+
+    set(stat: string | string[], value: any, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
         this.sendAll(stat, value, 's', sampleRate, tags, callback);
     };
-    ;
-    Client.prototype.sendAll = function (stat, value, type, sampleRateOrTags, tagsOrCallback, callback) {
-        var _this = this;
-        var completed = 0, calledback = false, sentBytes = 0, tags, sampleRate;
+
+
+    /**
+     * Checks if stats is an array and sends all stats calling back once all have sent
+     * @param stat The stat(s) to send
+     * @param value The value to send
+     * @param sampleRate The Number of times to sample (0 to 1). Optional.
+     * @param tags The Array of tags to add to metrics. Optional.
+     * @param callback Callback when message is done being delivered. Optional.
+     */
+    sendAll(stat: string | string[], value: any, type: string, tags?: string[], callback?: CallbackFn): void;
+    sendAll(stat: string | string[], value: any, type: string, sampleRate?: number, tags?: string[], callback?: CallbackFn): void;
+    sendAll(stat: string | string[], value: any, type: string, sampleRateOrTags?: number | string[], tagsOrCallback?: string[] | CallbackFn, callback?: CallbackFn) {
+        let completed = 0,
+            calledback = false,
+            sentBytes = 0,
+            tags: string[] | undefined,
+            sampleRate: number | undefined;
+
         if (sampleRateOrTags && typeof sampleRateOrTags !== 'number' && typeof tagsOrCallback === 'function') {
             callback = tagsOrCallback;
             tags = sampleRateOrTags;
             sampleRate = undefined;
         }
+
         if (tagsOrCallback && !Array.isArray(tagsOrCallback)) {
             callback = tagsOrCallback;
             tags = undefined;
         }
+
         if (Array.isArray(stat)) {
-            stat.forEach(function (item) { return _this.send(item, value, type, sampleRate, tags, onSend); });
-        }
-        else {
+            stat.forEach((item) => this.send(item, value, type, sampleRate, tags, onSend));
+        } else {
             this.send(stat, value, type, sampleRate, tags, callback);
         }
+
         /**
          * Gets called once for each callback, when all callbacks return we will
          * call back from the function
          * @private
          */
-        function onSend(error, bytes) {
+        function onSend(error: NodeJS.ErrnoException | null, bytes?: number) {
             completed += 1;
             if (calledback || typeof callback !== 'function') {
                 return;
             }
+
             if (error) {
                 calledback = true;
                 return callback(error);
             }
-            sentBytes += bytes;
+
+            sentBytes += bytes!;
             if (completed === stat.length) {
                 callback(null, sentBytes);
             }
         }
-    };
+    }
+
     /**
      * Sends a stat across the wire
      * @param stat The stat(s) to send
@@ -173,17 +221,20 @@ var Client = (function () {
      * @param tags The Array of tags to add to metrics
      * @param callback Callback when message is done being delivered. Optional.
      */
-    Client.prototype.send = function (stat, value, type, sampleRate, tags, callback) {
-        var message = this.prefix + stat + this.suffix + ':' + value + '|' + type, buf, merged_tags = [];
+    send(stat: string | string[], value: any, type: string, sampleRate?: number, tags?: string[], callback?: CallbackFn) {
+        var message = this.prefix + stat + this.suffix + ':' + value + '|' + type,
+            buf: Buffer,
+            merged_tags: string[] = [];
+
         if (sampleRate && sampleRate < 1) {
             if (Math.random() < sampleRate) {
                 message += '|@' + sampleRate;
-            }
-            else {
+            } else {
                 //don't want to send if we don't meet the sample ratio
                 return;
             }
         }
+
         if (tags && Array.isArray(tags)) {
             merged_tags = merged_tags.concat(tags);
         }
@@ -193,24 +244,24 @@ var Client = (function () {
         if (merged_tags.length > 0) {
             message += '|#' + merged_tags.join(',');
         }
+
         // Only send this stat if we're not a mock Client.
         if (!this.mock) {
             buf = new Buffer(message);
             this.socket.send(buf, 0, buf.length, this.port, this.host, callback);
-        }
-        else {
+        } else {
             if (typeof callback === 'function') {
                 callback(null, 0);
             }
         }
-    };
+    }
+
     /**
      * Close the underlying socket and stop listening for data on it.
      */
-    Client.prototype.close = function () {
+    close() {
         this.socket.close();
-    };
-    return Client;
-}());
-exports.default = Client;
+    }
+}
+
 exports.StatsD = Client;

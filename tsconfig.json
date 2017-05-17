@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "es5",
+    "module": "commonjs",
+    "strict": true,
+    "declaration": true,
+    "types": [
+      "node"
+    ]
+  },
+  "files": [
+    "lib/statsd.ts"
+  ]
+}
