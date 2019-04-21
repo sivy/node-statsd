@@ -84,12 +84,14 @@ describe('StatsD', function(){
       assert.equal(global.statsd, undefined);
       assert.equal(statsd.mock, undefined);
       assert.deepEqual(statsd.global_tags, []);
+      assert.equal(statsd.groupTime, 0);
+      assert.equal(statsd.maxGroupSize, 1300);
       assert.ok(!statsd.mock);
     });
 
     it('should set the proper values when specified', function(){
       // cachedDns isn't tested here; see below
-      var statsd = new StatsD('host', 1234, 'prefix', 'suffix', true, null, true, ['gtag']);
+      var statsd = new StatsD('host', 1234, 'prefix', 'suffix', true, null, true, ['gtag'], 5, 1500);
       assert.equal(statsd.host, 'host');
       assert.equal(statsd.port, 1234);
       assert.equal(statsd.prefix, 'prefix');
@@ -97,6 +99,8 @@ describe('StatsD', function(){
       assert.equal(statsd, global.statsd);
       assert.equal(statsd.mock, true);
       assert.deepEqual(statsd.global_tags, ['gtag']);
+      assert.equal(statsd.groupTime, 5);
+      assert.equal(statsd.maxGroupSize, 1500);
     });
 
     it('should set the proper values with options hash format', function(){
@@ -108,7 +112,9 @@ describe('StatsD', function(){
         suffix: 'suffix',
         globalize: true,
         mock: true,
-        global_tags: ['gtag']
+        global_tags: ['gtag'],
+        groupTime: 5,
+        maxGroupSize: 1500
       });
       assert.equal(statsd.host, 'host');
       assert.equal(statsd.port, 1234);
@@ -117,6 +123,8 @@ describe('StatsD', function(){
       assert.equal(statsd, global.statsd);
       assert.equal(statsd.mock, true);
       assert.deepEqual(statsd.global_tags, ['gtag']);
+      assert.equal(statsd.groupTime, 5);
+      assert.equal(statsd.maxGroupSize, 1500);
     });
 
     it('should attempt to cache a dns record if dnsCache is specified', function(done){
@@ -677,6 +685,46 @@ describe('StatsD', function(){
 
     it('should send no set stat when a mock Client is used', function(finished){
       assertMockClientMethod('set', finished);
+    });
+  });
+
+
+  describe('#groupTime', function(finished){
+    it('check if messages are grouped', function(finished){
+      udpTest(function(message, server){
+        assert.equal(message, 'test:42|g\ntest2:42|g\ntest3:42|g');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address,
+              port: address.port,
+              groupTime: 1
+            });
+            statsd.gauge('test', 42);
+            statsd.gauge('test2', 42);
+            statsd.gauge('test3', 42);
+      });
+    });
+
+    it('check if messages are split at size', function(finished){
+      udpTest(function(message, server){
+        assert.equal(message, 'test:42|g\ntest2:42|g');
+        server.close();
+        finished();
+      }, function(server){
+        var address = server.address(),
+            statsd = new StatsD({
+              host: address.address,
+              port: address.port,
+              groupTime: 1,
+              maxGroupSize: 20,
+            });
+            statsd.gauge('test', 42);
+            statsd.gauge('test2', 42);
+            statsd.gauge('this will be in the next message', 42);
+      });
     });
   });
 
