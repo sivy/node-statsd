@@ -178,6 +178,15 @@ describe('StatsD', function(){
       assert.ok(statsd.socket instanceof dgram.Socket);
     });
 
+    it('should create a socket when custom createSocket function is provided in options', function(){
+      var statsd = new StatsD({
+        createSocket: function() {
+          return 'customSocket';
+        }
+      });
+      assert.equal('customSocket', statsd.socket);
+    });
+
   });
 
   describe('#global_tags', function(){
